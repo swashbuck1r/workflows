@@ -1,0 +1,76 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: workflow
+name: service-now-example
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  scm-token-own: read
+jobs:
+  build:
+    steps:
+      - id: servicenow-create
+        name: Trigger Servicenow Create Mode
+        uses: cloudbees-io/servicenow@v1
+        with:
+          url: ${{ vars.cb_servicenow_url }}
+          username: ${{ secrets.cb_servicenow_username }}
+          password: ${{ secrets.cb_servicenow_password }}
+          action-type: "create"
+          cr-type: "normal"
+          short-description: "upgrade request"
+
+      - uses: docker://golang:1.20.3-alpine3.17
+        name: Dump servicenow_output
+        shell: sh
+        run: |
+          echo "${{ fromJSON(steps.servicenow-create.outputs.servicenow-output).number }}"
+          echo "----- servicenow-output -----"
+          echo "${{ steps.servicenow-create.outputs.servicenow-output }}"
+
+      - id: servicenow-assign
+        name: Trigger Servicenow Update Assess state
+        uses: cloudbees-io/servicenow@v1
+        with:
+          url: ${{ vars.cb_servicenow_url }}
+          username: ${{ secrets.cb_servicenow_username }}
+          password: ${{ secrets.cb_servicenow_password }}
+          action-type: "update"
+          sys-id: ${{ fromJSON(steps.servicenow-create.outputs.servicenow-output).sys_id }}
+          # Update state from New to Assess
+          state: "Assess"
+          assignment-group: "Team Development Code Reviewers"
+          additional-parameters : '{"risk_impact_analysis":"Describe the risks here","implementation_plan": "Describe the implementation plan here"}'
+
+      - uses: docker://golang:1.20.3-alpine3.17
+        name: Dump servicenow_output
+        shell: sh
+        run: |
+          echo "----- servicenow-output -----"
+          echo "${{ steps.servicenow-assign.outputs.servicenow-output }}"
+
+      - id: servicenow-wait-for-approval
+        name: Trigger Servicenow Wait For Approval
+        uses: cloudbees-io/servicenow-poll-for-approval@v1
+        with:
+          url: ${{ vars.cb_servicenow_url }}
+          username: ${{ secrets.cb_servicenow_username }}
+          password: ${{ secrets.cb_servicenow_password }}
+          cr-number: ${{ fromJSON(steps.servicenow-create.outputs.servicenow-output).number }}
+          poll-interval: 1
+          poll-duration: 5
+          approval-field-value-approved: approved
+          approval-field-value-rejected: rejected
+
+      - uses: docker://golang:1.20.3-alpine3.17
+        name: Dump servicenow_output
+        shell: sh
+        run: |
+          echo "----- servicenow-output -----"
+          echo "${{ steps.servicenow-wait-for-approval.outputs.servicenow-output }}"
+
+      - uses: docker://golang:1.20.3-alpine3.17
+        name: Post-approval stuff
+        shell: sh
+        run: |
+          echo "TODO: do some approved stuff"
