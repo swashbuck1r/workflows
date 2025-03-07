@@ -3,9 +3,11 @@ kind: workflow
 name: service-now-example
 on:
   workflow_dispatch:
+
 permissions:
   id-token: write
   scm-token-own: read
+  
 jobs:
   build:
     steps:
